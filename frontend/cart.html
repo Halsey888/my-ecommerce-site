@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>購物車</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <nav class="navbar">
+            <div class="left-nav">
+                <div class="logo">
+                    <button style="background: none; border: none; padding: 0; padding-top: 10px; margin: 0;"><a href="index.html">
+                        <img src="https://thumbsnap.com/i/8X3WqQSu.png" alt="網站Logo">
+                    </a>
+                    </button>
+                </div>
+                <a href="index.html">首頁</a>
+                <a href="products.html">所有商品</a>
+            </div>
+            <div class="right-nav">
+                <div class="logged-out-nav">
+                    <a href="auth.html">登入</a>
+                    <a href="register.html">註冊</a> </div>
+                <div class="logged-in-nav">
+                    <span style="color: white; margin-right: 15px;">歡迎，<b id="navbar-username"></b>！</span>
+                    <a href="cart.html">購物車 (<span id="cart-count">0</span>)</a>
+                    <a href="orders.html">我的訂單</a>
+                    <a href="#" id="logout-btn">登出</a>
+                    <a href="admin.html" class="button-link" style="background-color: #5cb85c;">管理後台</a> </div>
+            </div>
+        </nav>
+
+        <h1>我的購物車</h1>
+
+        <div id="cart-message" class="message" style="display: none;"></div>
+
+        <ul id="cart-items">
+            <p>您的購物車是空的。</p>
+        </ul>
+
+        <div class="cart-total">
+            總計: NT$ <span id="cart-total-amount">0</span>
+        </div>
+
+        <div style="text-align: right; margin-top: 20px;">
+            <button id="checkout-btn">前往結帳</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        // cart.html 專屬的 JavaScript 邏輯
+        document.addEventListener('DOMContentLoaded', () => {
+            renderCart(); // 渲染購物車內容
+
+            const checkoutBtn = document.getElementById('checkout-btn');
+            if (checkoutBtn) {
+                checkoutBtn.addEventListener('click', handleCheckout);
+            }
+        });
+
+        // 渲染購物車內容
+        function renderCart() {
+            const cartItemsList = document.getElementById('cart-items');
+            const cartTotalAmountSpan = document.getElementById('cart-total-amount');
+            let totalAmount = 0;
+
+            // 清空現有內容
+            cartItemsList.innerHTML = '';
+
+            if (cart.length === 0) {
+                cartItemsList.innerHTML = '<p>您的購物車是空的。</p>';
+                cartTotalAmountSpan.textContent = '0'; // 初始值也設為 0
+                document.getElementById('checkout-btn').disabled = true; // 禁用結帳按鈕
+            } else {
+                document.getElementById('checkout-btn').disabled = false; // 啟用結帳按鈕
+
+                cart.forEach(item => {
+                    const li = document.createElement('li');
+                    // 確保 itemPrice 是數字，然後四捨五入
+                    const itemPrice = Math.round(parseFloat(item.price)); 
+                    const subtotal = itemPrice * item.quantity; // 小計計算使用四捨五入後的單價
+                    totalAmount += subtotal;
+
+                    li.innerHTML = `
+                        <div class="cart-item-info">
+                            <h3>${item.name}</h3>
+                            <p>單價: NT$ ${itemPrice}</p> <p>數量: <input type="number" value="${item.quantity}" min="1" onchange="updateCartQuantity(${item.id}, this.value)"></p>
+                        </div>
+                        <div>
+                            <span>小計: NT$ ${Math.round(subtotal)}</span> <button onclick="removeFromCart(${item.id})" style="margin-left: 10px; background-color: #dc3545;">移除</button>
+                        </div>
+                    `;
+                    cartItemsList.appendChild(li);
+                });
+
+                cartTotalAmountSpan.textContent = Math.round(totalAmount); // 總計顯示為整數
+            }
+        }
+
+        // 處理結帳
+        async function handleCheckout() {
+            console.log('結帳按鈕被點擊！');
+
+            if (!isLoggedIn()) {
+                console.log('用戶未登入，無法結帳。');
+                showMessage('cart-message', '請先登入才能結帳。', 'error');
+                setTimeout(() => {
+                    window.location.href = 'auth.html';
+                }, 1500);
+                return;
+            }
+
+            if (cart.length === 0) {
+                console.log('購物車是空的，無法結帳。');
+                showMessage('cart-message', '購物車是空的，無法結帳。', 'error');
+                return;
+            }
+
+            console.log('準備發送結帳請求...');
+            const userId = getUserId();
+            const items = cart.map(item => ({
+                productId: item.id,
+                quantity: item.quantity
+            }));
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/orders`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId, items })
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    showMessage('cart-message', data.message, 'success');
+                    cart = []; // 清空購物車
+                    saveCart(); // 保存空購物車到 localStorage
+                    renderCart(); // 重新渲染購物車
+                    setTimeout(() => {
+                        window.location.href = `orders.html?userId=${userId}`; // 導向訂單查詢頁
+                    }, 2000);
+                } else {
+                    showMessage('cart-message', data.message, 'error');
+                }
+            } catch (error) {
+                console.error('結帳請求失敗:', error);
+                showMessage('cart-message', '網路錯誤，結帳失敗。', 'error');
+            }
+        }
+    </script>
+</body>
+</html>

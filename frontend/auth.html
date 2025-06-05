@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>會員登入</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <nav class="navbar">
+            <div class="left-nav">
+                <div class="logo">
+                    <button style="background: none; border: none; padding: 0; padding-top: 10px; margin: 0;"><a href="index.html">
+                        <img src="https://thumbsnap.com/i/8X3WqQSu.png" alt="網站Logo">
+                    </a>
+                    </button>
+                </div>
+                <a href="index.html">首頁</a>
+                <a href="products.html">所有商品</a>
+            </div>
+            <div class="right-nav">
+                <div class="logged-out-nav">
+                    <a href="auth.html">登入</a>
+                    <a href="register.html">註冊</a> </div>
+                <div class="logged-in-nav">
+                    <span style="color: white; margin-right: 15px;">歡迎，<b id="navbar-username"></b>！</span>
+                    <a href="cart.html">購物車 (<span id="cart-count">0</span>)</a>
+                    <a href="orders.html">我的訂單</a>
+                    <a href="#" id="logout-btn">登出</a>
+                    <a href="admin.html" class="button-link" style="background-color: #5cb85c;">管理後台</a> </div>
+            </div>
+        </nav>
+
+        <h1>會員登入</h1>
+
+        <div id="auth-message" class="message" style="display: none;"></div>
+
+        <form id="login-form">
+            <label for="login-username">用戶名:</label>
+            <input type="text" id="login-username" name="username" required>
+
+            <label for="login-password">密碼:</label>
+            <input type="password" id="login-password" name="password" required>
+
+            <button type="submit">登入</button>
+            <p style="text-align: center; margin-top: 15px;">還沒有帳號？ <a href="register.html" class="button-link" style="background: none; color: #007bff; padding: 0;">立即註冊</a></p>
+        </form>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        // auth.html 專屬的 JavaScript 邏輯
+        document.addEventListener('DOMContentLoaded', () => {
+            const loginForm = document.getElementById('login-form');
+            const authMessage = document.getElementById('auth-message');
+
+            if (loginForm) {
+                loginForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const username = loginForm['username'].value;
+                    const password = loginForm['password'].value;
+
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/login`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ username, password })
+                        });
+                        const data = await response.json();
+
+                        if (response.ok) {
+                            showMessage('auth-message', data.message, 'success');
+                            setLoginState(data.userId, data.username); // 保存登入狀態
+                            // 延遲導向，讓用戶看到成功訊息
+                            setTimeout(() => {
+                                window.location.href = 'index.html'; // 登入成功後導向首頁
+                            }, 1500);
+                        } else {
+                            showMessage('auth-message', data.message, 'error');
+                        }
+                    } catch (error) {
+                        console.error('登入請求失敗:', error);
+                        showMessage('auth-message', '網路錯誤，請稍後再試。', 'error');
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>

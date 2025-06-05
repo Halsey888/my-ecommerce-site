@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>商品詳情</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <nav class="navbar">
+            <div class="left-nav">
+                <div class="logo">
+                    <button style="background: none; border: none; padding: 0; padding-top: 10px; margin: 0;"><a href="index.html">
+                        <img src="https://thumbsnap.com/i/8X3WqQSu.png" alt="網站Logo">
+                    </a>
+                    </button>
+                </div>
+                <a href="index.html">首頁</a>
+                <a href="products.html">所有商品</a>
+            </div>
+            <div class="right-nav">
+                <div class="logged-out-nav">
+                    <a href="auth.html">登入</a>
+                    <a href="register.html">註冊</a> </div>
+                <div class="logged-in-nav">
+                    <span style="color: white; margin-right: 15px;">歡迎，<b id="navbar-username"></b>！</span>
+                    <a href="cart.html">購物車 (<span id="cart-count">0</span>)</a>
+                    <a href="orders.html">我的訂單</a>
+                    <a href="#" id="logout-btn">登出</a>
+                    <a href="admin.html" class="button-link" style="background-color: #5cb85c;">管理後台</a> </div>
+            </div>
+        </nav>
+
+        <h1>商品詳情</h1>
+
+        <div id="product-detail" class="product-detail">
+            <p>載入中...</p>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        // product.html 專屬的 JavaScript 邏輯
+        document.addEventListener('DOMContentLoaded', async () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const productId = urlParams.get('id');
+            const productDetailDiv = document.getElementById('product-detail');
+
+            if (productId) {
+                await fetchProductDetails(productId);
+            } else {
+                productDetailDiv.innerHTML = '<p class="message error">未指定商品ID。</p>';
+            }
+            updateCartCountDisplay(); // 更新購物車數量顯示
+        });
+
+
+        // 從後端獲取單一商品詳情並渲染到頁面
+        async function fetchProductDetails(productId) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/products/${productId}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const product = await response.json();
+                const productDetailDiv = document.getElementById('product-detail');
+
+                productDetailDiv.innerHTML = `
+                    <img src="${product.image_url}" alt="${product.name}" onerror="this.onerror=null;this.src='https://picsum.photos/400/300?grayscale&blur=2';">
+                    <div class="product-info">
+                        <h2>${product.name}</h2>
+                        <p class="price">NT$ ${Math.round(parseFloat(product.price))}</p>
+                        <p>${product.description}</p>
+                        <p>庫存: ${product.stock} 件</p>
+                        <button onclick="addToCartFromDetail(${product.id}, '${product.name}', ${parseFloat(product.price)}, '${product.image_url}')">加入購物車</button>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('獲取商品詳情失敗:', error);
+                document.getElementById('product-detail').innerHTML = '<p class="message error">無法載入商品詳情，請稍後再試。</p>';
+            }
+        }
+
+        // 從詳情頁加入購物車
+        function addToCartFromDetail(productId, productName, productPrice, imageUrl) {
+            const product = {
+                id: productId,
+                name: productName,
+                price: productPrice,
+                image_url: imageUrl
+            };
+            addToCart(product); // 使用 script.js 中的 addToCart 函數
+            updateCartCountDisplay(); // 更新導航列購物車數量
+        }
+    </script>
+</body>
+</html>

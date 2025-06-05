@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>後台管理 - 庫存</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* 專為管理員頁面設計的樣式 */
+        .admin-panel {
+            margin-top: 30px;
+        }
+        .admin-login-form {
+            max-width: 350px;
+            margin: 50px auto;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+        .admin-login-form button {
+            width: 100%;
+        }
+        .product-management-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .product-management-table th,
+        .product-management-table td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+        .product-management-table th {
+            background-color: #f2f2f2;
+        }
+        .product-management-table input[type="number"] {
+            width: 60px;
+            padding: 5px;
+        }
+        /* 新增商品表單樣式 */
+        .add-product-form-section {
+            max-width: 600px; /* 表單寬度可以大一點 */
+            margin: 40px auto;
+            padding: 30px;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            background-color: #ffffff;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .add-product-form-section label {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .add-product-form-section input[type="text"],
+        .add-product-form-section input[type="number"],
+        .add-product-form-section textarea {
+            width: calc(100% - 22px);
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 1em;
+        }
+        .add-product-form-section textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+        .add-product-form-section button {
+            padding: 12px 20px;
+            font-size: 1.1em;
+            background-color: #28a745; /* 綠色按鈕 */
+        }
+        .add-product-form-section button:hover {
+            background-color: #218838;
+        }
+        /* 刪除按鈕樣式 */
+        .delete-btn {
+            background-color: #dc3545; /* 紅色 */
+            margin-left: 10px;
+        }
+        .delete-btn:hover {
+            background-color: #c82333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>後台管理</h1>
+        <div id="admin-message" class="message" style="display: none;"></div>
+
+        <div id="admin-login-section" class="admin-login-form">
+            <h2>管理員登入</h2>
+            <form id="admin-login-form">
+                <label for="admin-username">管理員用戶名:</label>
+                <input type="text" id="admin-username" name="username" required>
+
+                <label for="admin-password">密碼:</label>
+                <input type="password" id="admin-password" name="password" required>
+
+                <button type="submit">登入</button>
+            </form>
+        </div>
+
+        <div id="stock-management-section" class="admin-panel" style="display: none;">
+            <h2>貨物庫存管理</h2>
+            <table class="product-management-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>商品名稱</th>
+                        <th>目前庫存</th>
+                        <th>新庫存量</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="product-stock-list">
+                    <tr><td colspan="5">載入中...</td></tr>
+                </tbody>
+            </table>
+            <button id="logout-admin-btn" style="margin-top: 20px;">登出管理員</button>
+        </div>
+
+        <div id="add-product-section" class="add-product-form-section" style="display: none;">
+            <h2>新增商品</h2>
+            <form id="add-product-form">
+                <label for="add-name">商品名稱:</label>
+                <input type="text" id="add-name" name="name" required>
+
+                <label for="add-description">商品描述:</label>
+                <textarea id="add-description" name="description"></textarea>
+
+                <label for="add-price">價格 (NT$):</label>
+                <input type="number" id="add-price" name="price" min="0" step="1" required>
+
+                <label for="add-stock">庫存量:</label>
+                <input type="number" id="add-stock" name="stock" min="0" step="1" required>
+
+                <label for="add-image-url">圖片連結 (URL):</label>
+                <input type="text" id="add-image-url" name="image_url">
+
+                <label for="add-category">商品分類:</label>
+                <input type="text" id="add-category" name="category" value="其他">
+
+                <button type="submit">新增商品</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        const ADMIN_TOKEN_KEY = 'adminToken';
+
+        function isAdminLoggedIn() {
+            return localStorage.getItem(ADMIN_TOKEN_KEY) !== null;
+        }
+
+        function getAdminToken() {
+            return localStorage.getItem(ADMIN_TOKEN_KEY);
+        }
+
+        function setAdminLoginState(token) {
+            localStorage.setItem(ADMIN_TOKEN_KEY, token);
+        }
+
+        function clearAdminLoginState() {
+            localStorage.removeItem(ADMIN_TOKEN_KEY);
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            const adminLoginForm = document.getElementById('admin-login-form');
+            const adminLoginSection = document.getElementById('admin-login-section');
+            const stockManagementSection = document.getElementById('stock-management-section');
+            const addProductSection = document.getElementById('add-product-section');
+            const productStockList = document.getElementById('product-stock-list');
+            const adminMessage = document.getElementById('admin-message');
+            const logoutAdminBtn = document.getElementById('logout-admin-btn');
+            const addProductForm = document.getElementById('add-product-form');
+
+            // 初始化顯示
+            if (isAdminLoggedIn()) {
+                adminLoginSection.style.display = 'none';
+                stockManagementSection.style.display = 'block';
+                addProductSection.style.display = 'block';
+                await fetchAdminProducts();
+            } else {
+                adminLoginSection.style.display = 'block';
+                stockManagementSection.style.display = 'none';
+                addProductSection.style.display = 'none';
+            }
+
+            // 管理員登入處理
+            if (adminLoginForm) {
+                adminLoginForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const username = adminLoginForm['username'].value;
+                    const password = adminLoginForm['password'].value;
+
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/admin/login`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ username, password })
+                        });
+                        const data = await response.json();
+
+                        if (response.ok) {
+                            showMessage('admin-message', data.message, 'success');
+                            setAdminLoginState(data.token);
+                            adminLoginSection.style.display = 'none';
+                            stockManagementSection.style.display = 'block';
+                            addProductSection.style.display = 'block';
+                            await fetchAdminProducts();
+                        } else {
+                            showMessage('admin-message', data.message, 'error');
+                        }
+                    } catch (error) {
+                        console.error('管理員登入請求失敗:', error);
+                        showMessage('admin-message', '網路錯誤，請稍後再試。', 'error');
+                    }
+                });
+            }
+
+            // 登出管理員
+            if (logoutAdminBtn) {
+                logoutAdminBtn.addEventListener('click', () => {
+                    clearAdminLoginState();
+                    showMessage('admin-message', '您已登出管理員帳號！', 'success');
+                    adminLoginSection.style.display = 'block';
+                    stockManagementSection.style.display = 'none';
+                    addProductSection.style.display = 'none';
+                });
+            }
+
+            // 獲取並顯示所有商品庫存
+            async function fetchAdminProducts() {
+                try {
+                    const token = getAdminToken();
+                    const response = await fetch(`${API_BASE_URL}/admin/products`, {
+                        method: 'GET',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        productStockList.innerHTML = '';
+                        if (data.length === 0) {
+                            productStockList.innerHTML = '<tr><td colspan="5">沒有商品數據。</td></tr>';
+                            return;
+                        }
+                        data.forEach(product => {
+                            const tr = document.createElement('tr');
+                            tr.innerHTML = `
+                                <td>${product.id}</td>
+                                <td>${product.name}</td>
+                                <td id="current-stock-${product.id}">${product.stock}</td>
+                                <td><input type="number" id="new-stock-${product.id}" value="${product.stock}" min="0"></td>
+                                <td>
+                                    <button onclick="updateProductStock(${product.id})">更新</button>
+                                    <button class="delete-btn" onclick="deleteProduct(${product.id}, '${product.name}')">刪除</button>
+                                </td>
+                            `;
+                            productStockList.appendChild(tr);
+                        });
+                    } else {
+                        showMessage('admin-message', `載入商品失敗: ${data.message}`, 'error');
+                        if (response.status === 403 || response.status === 401) {
+                            clearAdminLoginState();
+                            adminLoginSection.style.display = 'block';
+                            stockManagementSection.style.display = 'none';
+                            addProductSection.style.display = 'none';
+                        }
+                    }
+                } catch (error) {
+                    console.error('獲取管理員商品列表失敗:', error);
+                    showMessage('admin-message', '網路錯誤，無法載入商品。', 'error');
+                }
+            }
+
+            // 更新商品庫存函數
+            window.updateProductStock = async (productId) => {
+                const newStockInput = document.getElementById(`new-stock-${productId}`);
+                const newStock = parseInt(newStockInput.value);
+
+                if (isNaN(newStock) || newStock < 0) {
+                    showMessage('admin-message', '請輸入有效的非負數字庫存！', 'error');
+                    return;
+                }
+
+                try {
+                    const token = getAdminToken();
+                    const response = await fetch(`${API_BASE_URL}/admin/products/${productId}/stock`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ newStock: newStock })
+                    });
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        showMessage('admin-message', data.message, 'success');
+                        document.getElementById(`current-stock-${productId}`).textContent = newStock;
+                        await fetchAdminProducts();
+                    } else {
+                        showMessage('admin-message', `更新庫存失敗: ${data.message}`, 'error');
+                        if (response.status === 403 || response.status === 401) {
+                            clearAdminLoginState();
+                            adminLoginSection.style.display = 'block';
+                            stockManagementSection.style.display = 'none';
+                            addProductSection.style.display = 'none';
+                        }
+                    }
+                } catch (error) {
+                    console.error('更新庫存請求失敗:', error);
+                    showMessage('admin-message', '網路錯誤，更新庫存失敗。', 'error');
+                }
+            };
+
+            // 新增商品表單提交處理 (新增)
+            if (addProductForm) {
+                addProductForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+
+                    const newProduct = {
+                        name: addProductForm['name'].value,
+                        description: addProductForm['description'].value,
+                        price: parseFloat(addProductForm['price'].value),
+                        stock: parseInt(addProductForm['stock'].value),
+                        image_url: addProductForm['image_url'].value,
+                        category: addProductForm['category'].value
+                    };
+
+                    try {
+                        const token = getAdminToken();
+                        const response = await fetch(`${API_BASE_URL}/admin/products`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${token}`
+                            },
+                            body: JSON.stringify(newProduct)
+                        });
+                        const data = await response.json();
+
+                        if (response.ok) {
+                            showMessage('admin-message', data.message, 'success');
+                            addProductForm.reset();
+                            addProductForm['category'].value = '其他';
+                            await fetchAdminProducts();
+                        } else {
+                            showMessage('admin-message', `新增商品失敗: ${data.message}`, 'error');
+                            if (response.status === 403 || response.status === 401) {
+                                clearAdminLoginState();
+                                adminLoginSection.style.display = 'block';
+                                stockManagementSection.style.display = 'none';
+                                addProductSection.style.display = 'none';
+                            }
+                        }
+                    } catch (error) {
+                        console.error('新增商品請求失敗:', error);
+                        showMessage('admin-message', '網路錯誤，新增商品失敗。', 'error');
+                    }
+                });
+            }
+
+            // **新增：刪除商品函數**
+            window.deleteProduct = async (productId, productName) => {
+                if (!confirm(`確定要刪除商品 "${productName}" (ID: ${productId}) 嗎？此操作不可逆！`)) {
+                    return;
+                }
+
+                try {
+                    const token = getAdminToken();
+                    const response = await fetch(`${API_BASE_URL}/admin/products/${productId}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        showMessage('admin-message', data.message, 'success');
+                        await fetchAdminProducts(); // 重新載入列表以顯示變更
+                    } else {
+                        showMessage('admin-message', `刪除商品失敗: ${data.message}`, 'error');
+                        if (response.status === 403 || response.status === 401) {
+                            clearAdminLoginState();
+                            adminLoginSection.style.display = 'block';
+                            stockManagementSection.style.display = 'none';
+                            addProductSection.style.display = 'none';
+                        }
+                    }
+                } catch (error) {
+                    console.error('刪除商品請求失敗:', error);
+                    showMessage('admin-message', '網路錯誤，刪除商品失敗。', 'error');
+                }
+            };
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>所有商品</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* products.html 專屬的分類按鈕樣式 */
+        .category-filter {
+            display: flex; /* 水平排列按鈕 */
+            overflow-x: auto; /* 允許水平滾動 */
+            white-space: nowrap; /* 防止按鈕換行 */
+            padding: 10px 0; /* 上下內邊距 */
+            gap: 10px; /* 按鈕間距 */
+            margin-bottom: 20px; /* 與下方商品列表的間距 */
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none; /* 隱藏 Firefox 滾動條 */
+            -ms-overflow-style: none;  /* 隱藏 IE 滾動條 */
+        }
+
+        .category-filter::-webkit-scrollbar { /* 隱藏 Webkit 滾動條 */
+            display: none;
+            width: 0;
+            height: 0;
+        }
+
+        .category-filter button {
+            flex-shrink: 0; /* 防止按鈕縮小 */
+            background-color: #f1f1f1; /* 淺灰色背景 */
+            color: #333; /* 深灰色文字 */
+            border: 1px solid #ccc; /* 淺邊框 */
+            border-radius: 20px; /* 膠囊形狀的圓角 */
+            padding: 8px 15px; /* 內邊距 */
+            cursor: pointer;
+            font-size: 0.95em;
+            transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+        }
+
+        .category-filter button:hover {
+            background-color: #e0e0e0; /* hover 時顏色變深 */
+            border-color: #bbb;
+        }
+
+        .category-filter button.active {
+            background-color: #f95e1c; /* 激活狀態的背景色 */
+            color: white; /* 激活狀態的文字色 */
+            border-color: #f95e1c; /* 激活狀態的邊框色 */
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <nav class="navbar">
+            <div class="left-nav">
+                <div class="logo">
+                    <button style="background: none; border: none; padding: 0; padding-top: 10px; margin: 0;"><a href="index.html">
+                        <img src="https://thumbsnap.com/i/8X3WqQSu.png" alt="網站Logo">
+                    </a>
+                    </button>
+                </div>
+                <a href="index.html">首頁</a>
+                <a href="products.html">所有商品</a>
+            </div>
+            <div class="right-nav">
+                <div class="logged-out-nav">
+                    <a href="auth.html">登入</a>
+                    <a href="register.html">註冊</a>
+                </div>
+                <div class="logged-in-nav">
+                    <span style="color: white; margin-right: 15px;">歡迎，<b id="navbar-username"></b>！</span>
+                    <a href="cart.html">購物車 (<span id="cart-count">0</span>)</a>
+                    <a href="orders.html">我的訂單</a>
+                    <a href="#" id="logout-btn">登出</a>
+                    <a href="admin.html" class="button-link" style="background-color: #5cb85c;">管理後台</a>
+                </div>
+            </div>
+        </nav>
+
+        <h1>所有商品</h1> <div class="category-filter" id="category-filter-buttons">
+            <button class="active" data-category="all">全部</button>
+            <button data-category="服飾">服飾</button>
+            <button data-category="電子產品">電子產品</button>
+            <button data-category="家居用品">家居用品</button>
+            <button data-category="書籍">書籍</button>
+            <button data-category="運動">運動</button>
+            <button data-category="配件">配件</button>
+            <button data-category="其他">其他</button>
+        </div>
+
+        <div id="product-list" class="product-grid">
+            </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        // products.html 專屬的 JavaScript 邏輯
+        let currentCategory = 'all'; // 追蹤當前選中的分類
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            // 載入商品列表 (根據預設分類 'all')
+            await fetchProducts(currentCategory); 
+            // 更新購物車數量顯示
+            updateCartCountDisplay();
+
+            // 分類按鈕事件監聽
+            const categoryFilterButtons = document.getElementById('category-filter-buttons');
+            if (categoryFilterButtons) {
+                categoryFilterButtons.addEventListener('click', async (e) => { // 增加 async
+                    if (e.target.tagName === 'BUTTON') {
+                        // 移除所有按鈕的 active 狀態
+                        Array.from(categoryFilterButtons.children).forEach(btn => {
+                            btn.classList.remove('active');
+                        });
+                        // 為被點擊的按鈕添加 active 狀態
+                        e.target.classList.add('active');
+                        
+                        currentCategory = e.target.dataset.category; // 更新當前分類
+                        await fetchProducts(currentCategory); // 根據選中的分類重新載入商品
+                    }
+                });
+            }
+        });
+
+        // 從後端獲取商品列表並渲染到頁面 (修改為可接受 category 參數)
+        async function fetchProducts(category = 'all') { // 預設參數為 'all'
+            try {
+                // 構建帶有 category 查詢參數的 URL
+                const url = new URL(`${API_BASE_URL}/products`);
+                if (category && category !== 'all') {
+                    url.searchParams.append('category', category);
+                }
+
+                const response = await fetch(url.toString()); // 使用 url.toString()
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const products = await response.json();
+                const productListDiv = document.getElementById('product-list');
+                productListDiv.innerHTML = ''; // 清空現有內容
+
+                if (products.length === 0) {
+                    productListDiv.innerHTML = '<p style="text-align: center; margin-top: 20px; color: #555;">該分類下沒有商品。</p>';
+                    return;
+                }
+
+                products.forEach(product => {
+                    const productCard = document.createElement('div');
+                    // products.html 頁面，商品卡片使用 grid 佈局，不進行水平滾動
+                    productCard.className = 'product-card product-grid-item'; // 新增 product-grid-item 類別用於特定樣式
+                    productCard.innerHTML = `
+                        <img src="${product.image_url}" alt="${product.name}" onerror="this.onerror=null;this.src='https://picsum.photos/250/150?grayscale&blur=2';">
+                        <h3>${product.name}</h3>
+                        <p>NT$ ${Math.round(parseFloat(product.price))}</p>
+                        <button onclick="viewProduct(${product.id})">查看詳情</button>
+                        <button onclick="addToCartFromList(${product.id}, '${product.name}', ${parseFloat(product.price)}, '${product.image_url}')">加入購物車</button>
+                    `;
+                    productListDiv.appendChild(productCard);
+                });
+            } catch (error) {
+                console.error('獲取商品列表失敗:', error);
+                alert('無法載入商品，請稍後再試。');
+            }
+        }
+
+        // 從列表頁直接加入購物車（簡化處理）
+        function addToCartFromList(productId, productName, productPrice, imageUrl) {
+            const product = {
+                id: productId,
+                name: productName,
+                price: productPrice,
+                image_url: imageUrl
+            };
+            addToCart(product); // 使用 script.js 中的 addToCart 函數 
+            updateCartCountDisplay(); // 更新導航列購物車數量
+        }
+
+        // 查看商品詳情，導向 product.html
+        function viewProduct(productId) {
+            window.location.href = `product.html?id=${productId}`;
+        }
+    </script>
+</body>
+</html>

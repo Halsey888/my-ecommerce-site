@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>會員註冊</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* 註冊頁面專屬的樣式調整，使其更精緻 */
+        .register-form {
+            max-width: 450px; /* 增加表單寬度 */
+            margin: 30px auto;
+            padding: 30px; /* 增加內邊距 */
+            border: 1px solid #e0e0e0; /* 更柔和的邊框 */
+            border-radius: 10px; /* 更圓潤的邊角 */
+            background-color: #ffffff; /* 白色背景 */
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); /* 輕微陰影 */
+        }
+
+        .register-form h2 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 25px;
+            font-size: 2em;
+        }
+
+        .register-form label {
+            display: block; /* 讓 label 佔據整行 */
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+
+        .register-form input[type="text"],
+        .register-form input[type="password"],
+        .register-form input[type="email"] {
+            width: calc(100% - 22px); /* 調整寬度以考慮 padding 和 border */
+            padding: 12px 10px; /* 增加輸入框內邊距 */
+            margin-bottom: 20px; /* 增加輸入框之間的間距 */
+            border: 1px solid #cccccc; /* 輸入框邊框 */
+            border-radius: 6px; /* 輸入框圓角 */
+            font-size: 1.1em;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .register-form input[type="text"]:focus,
+        .register-form input[type="password"]:focus,
+        .register-form input[type="email"]:focus {
+            border-color: #007bff; /* focus 時邊框變色 */
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25); /* focus 時陰影 */
+            outline: none;
+        }
+
+        .register-form button[type="submit"] {
+            width: 100%;
+            padding: 14px 20px;
+            font-size: 1.2em;
+            margin-top: 15px;
+        }
+
+        .register-form p {
+            text-align: center;
+            margin-top: 20px;
+            color: #666;
+        }
+
+        .register-form a {
+            font-weight: bold;
+            text-decoration: underline;
+            color: #007bff;
+        }
+        .register-form a:hover {
+            color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <nav class="navbar">
+            <div class="left-nav">
+                <div class="logo">
+                    <button style="background: none; border: none; padding: 0; padding-top: 10px; margin: 0;"><a href="index.html">
+                        <img src="https://thumbsnap.com/i/8X3WqQSu.png" alt="網站Logo">
+                    </a>
+                    </button>
+                </div>
+                <a href="index.html">首頁</a>
+                <a href="products.html">所有商品</a>
+            </div>
+            <div class="right-nav">
+                <div class="logged-out-nav">
+                    <a href="auth.html">登入</a>
+                    <a href="register.html">註冊</a>
+                </div>
+                <div class="logged-in-nav">
+                    <span style="color: white; margin-right: 15px;">歡迎，<b id="navbar-username"></b>！</span>
+                    <a href="cart.html">購物車 (<span id="cart-count">0</span>)</a>
+                    <a href="orders.html">我的訂單</a>
+                    <a href="#" id="logout-btn">登出</a>
+                    <a href="admin.html" class="button-link" style="background-color: #5cb85c;">管理後台</a>
+                </div>
+            </div>
+        </nav>
+
+        <h1>會員註冊</h1>
+
+        <div id="register-message" class="message" style="display: none;"></div>
+
+        <form id="register-form" class="register-form">
+            <label for="register-username">用戶名:</label>
+            <input type="text" id="register-username" name="username" required>
+
+            <label for="register-email">電子郵件:</label>
+            <input type="email" id="register-email" name="email" required>
+
+            <label for="register-password">密碼:</label>
+            <input type="password" id="register-password" name="password" required>
+
+            <button type="submit">註冊</button>
+            <p>已經有帳號？ <a href="auth.html">立即登入</a></p>
+        </form>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        // register.html 專屬的 JavaScript 邏輯
+        document.addEventListener('DOMContentLoaded', () => {
+            const registerForm = document.getElementById('register-form');
+            const registerMessage = document.getElementById('register-message');
+
+            if (registerForm) {
+                registerForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const username = registerForm['username'].value;
+                    const email = registerForm['email'].value;
+                    const password = registerForm['password'].value;
+
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/register`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ username, email, password })
+                        });
+                        const data = await response.json();
+
+                        if (response.ok) {
+                            showMessage('register-message', data.message, 'success');
+                            registerForm.reset(); // 清空表單
+                            setTimeout(() => {
+                                window.location.href = 'auth.html'; // 註冊成功後導向登入頁
+                            }, 1500);
+                        } else {
+                            showMessage('register-message', data.message, 'error');
+                        }
+                    } catch (error) {
+                        console.error('註冊請求失敗:', error);
+                        showMessage('register-message', '網路錯誤，請稍後再試。', 'error');
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的電子商務商店</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <nav class="navbar">
+            <div class="left-nav">
+                <div class="logo">
+                    <button style="background: none; border: none; padding: 0; padding-top: 10px; margin: 0;"><a href="index.html">
+                        <img src="https://thumbsnap.com/i/8X3WqQSu.png" alt="網站Logo">
+                    </a>
+                    </button>
+                </div>
+                <a href="index.html">首頁</a>
+                <a href="products.html">所有商品</a>
+            </div>
+            <div class="right-nav">
+                <div class="logged-out-nav">
+                    <a href="auth.html">登入</a>
+                    <a href="register.html">註冊</a> </div>
+                <div class="logged-in-nav">
+                    <span style="color: white; margin-right: 15px;">歡迎，<b id="navbar-username"></b>！</span>
+                    <a href="cart.html">購物車 (<span id="cart-count">0</span>)</a>
+                    <a href="orders.html">我的訂單</a>
+                    <a href="#" id="logout-btn">登出</a>
+                    <a href="admin.html" class="button-link" style="background-color: #5cb85c;">管理後台</a> </div>
+                </div>
+            </div>
+        </nav>
+
+        <h1>精選商品</h1>
+        <div class="products-section-wrapper"> <div id="product-list" class="product-grid">
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        // index.html 專屬的 JavaScript 邏輯
+        document.addEventListener('DOMContentLoaded', async () => {
+            // 載入商品列表
+            await fetchProducts();
+            // 更新購物車數量顯示 (雖然這裡沒有購物車圖標，但可以預載數量)
+            updateCartCountDisplay();
+        });
+
+
+        // 從後端獲取商品列表並渲染到頁面
+        async function fetchProducts() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/products`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const products = await response.json();
+                const productListDiv = document.getElementById('product-list');
+                productListDiv.innerHTML = ''; // 清空現有內容
+
+                products.forEach(product => {
+                    const productCard = document.createElement('div');
+                    productCard.className = 'product-card';
+                    productCard.innerHTML = `
+                        <img src="${product.image_url || 'https://via.placeholder.com/150'}" alt="${product.name}">
+                        <h3>${product.name}</h3>
+                        <p>NT$ ${Math.round(parseFloat(product.price))}</p>
+                        <button onclick="viewProduct(${product.id})">查看詳情</button>
+                        <button onclick="addToCartFromList(${product.id}, '${product.name}', ${parseFloat(product.price)})">加入購物車</button>
+                    `;
+                    productListDiv.appendChild(productCard);
+                });
+            } catch (error) {
+                console.error('獲取商品列表失敗:', error);
+                alert('無法載入商品，請稍後再試。');
+            }
+        }
+
+        // 從列表頁直接加入購物車（簡化處理）
+        function addToCartFromList(productId, productName, productPrice) {
+            const product = {
+                id: productId,
+                name: productName,
+                price: productPrice,
+                image_url: `https://via.placeholder.com/150?text=${encodeURIComponent(productName)}` // 簡化處理，實際應用會從後端獲取
+            };
+            addToCart(product); // 使用 script.js 中的 addToCart 函數
+            updateCartCountDisplay(); // 更新導航列購物車數量
+        }
+
+        // 查看商品詳情，導向 product.html
+        function viewProduct(productId) {
+            window.location.href = `product.html?id=${productId}`;
+        }
+    </script>
+</body>
+</html>

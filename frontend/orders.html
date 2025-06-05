@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的訂單</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <nav class="navbar">
+            <div class="left-nav">
+                <div class="logo">
+                    <button style="background: none; border: none; padding: 0; padding-top: 10px; margin: 0;"><a href="index.html">
+                        <img src="https://thumbsnap.com/i/8X3WqQSu.png" alt="網站Logo">
+                    </a>
+                    </button>
+                </div>
+                <a href="index.html">首頁</a>
+                <a href="products.html">所有商品</a>
+            </div>
+            <div class="right-nav">
+                <div class="logged-out-nav">
+                    <a href="auth.html">登入</a>
+                    <a href="register.html">註冊</a> </div>
+                <div class="logged-in-nav">
+                    <span style="color: white; margin-right: 15px;">歡迎，<b id="navbar-username"></b>！</span>
+                    <a href="cart.html">購物車 (<span id="cart-count">0</span>)</a>
+                    <a href="orders.html">我的訂單</a>
+                    <a href="#" id="logout-btn">登出</a>
+                    <a href="admin.html" class="button-link" style="background-color: #5cb85c;">管理後台</a> </div>
+            </div>
+        </nav>
+
+        <h1>我的訂單</h1>
+
+        <div id="order-message" class="message" style="display: none;"></div>
+
+        <div id="member-info" style="display: none;">
+            <p>您尚未登入。</p>
+        </div>
+
+        <div id="order-list" class="order-list">
+            <p>載入中...</p>
+        </div>
+
+        <h2>訂單詳情</h2>
+        <div id="order-detail-view">
+            <p>請點擊上方訂單查看詳情。</p>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        // orders.html 專屬的 JavaScript 邏輯
+        document.addEventListener('DOMContentLoaded', async () => {
+            if (!isLoggedIn()) {
+                document.getElementById('member-info').style.display = 'block';
+                document.getElementById('order-list').innerHTML = '<p>請登入後查看您的訂單。</p>';
+                document.getElementById('order-detail-view').innerHTML = ''; // 清空訂單詳情
+                return;
+            }
+
+            const userId = getUserId();
+            const username = getUsername();
+            
+            const memberInfoDiv = document.getElementById('member-info');
+            memberInfoDiv.style.display = 'block';
+            memberInfoDiv.innerHTML = `<p>當前登入會員: <b>${username}</b> (ID: ${userId})</p>`;
+
+            await fetchOrders(userId);
+            updateCartCountDisplay(); // 更新購物車數量顯示
+        });
+
+        // 顯示購物車商品數量 (用於導航列)
+        function updateCartCountDisplay() {
+            const cart = JSON.parse(localStorage.getItem('cart')) || [];
+            const cartCountSpan = document.getElementById('cart-count');
+            if (cartCountSpan) {
+                const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
+                cartCountSpan.textContent = totalItems;
+            }
+        }
+
+        // 獲取會員的所有訂單
+        async function fetchOrders(userId) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/users/${userId}/orders`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const orders = await response.json();
+                const orderListDiv = document.getElementById('order-list');
+                orderListDiv.innerHTML = ''; // 清空現有內容
+
+                if (orders.length === 0) {
+                    orderListDiv.innerHTML = '<p>您沒有任何訂單。</p>';
+                    return;
+                }
+
+                const table = document.createElement('table');
+                table.innerHTML = `
+                    <thead>
+                        <tr>
+                            <th>訂單號</th>
+                            <th>總金額</th>
+                            <th>狀態</th>
+                            <th>訂購日期</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="orders-table-body">
+                    </tbody>
+                `;
+                orderListDiv.appendChild(table);
+
+                const tableBody = document.getElementById('orders-table-body');
+                orders.forEach(order => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${order.id}</td>
+                        <td>NT$ ${Math.round(parseFloat(order.total_amount))}</td>
+                        <td>${order.status}</td>
+                        <td>${new Date(order.order_date).toLocaleString()}</td>
+                        <td><button class="button-link" onclick="fetchOrderDetail(${order.id})">查看詳情</button></td>
+                    `;
+                    tableBody.appendChild(tr);
+                });
+
+            } catch (error) {
+                console.error('獲取訂單列表失敗:', error);
+                document.getElementById('order-list').innerHTML = '<p class="message error">無法載入訂單列表，請稍後再試。</p>';
+            }
+        }
+
+        // 獲取單一訂單的詳細內容
+        async function fetchOrderDetail(orderId) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/orders/${orderId}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const order = await response.json();
+                const orderDetailView = document.getElementById('order-detail-view');
+
+                let itemsHtml = '';
+                order.items.forEach(item => {
+                    itemsHtml += `
+                        <li>
+                            <div class="cart-item-info">
+                                <h3>${item.product_name}</h3>
+                                <p>數量: ${item.quantity} x NT$ ${Math.round(parseFloat(item.price))}</p>
+                            </div>
+                            <img src="${item.image_url}" alt="${item.product_name}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 4px;" onerror="this.onerror=null;this.src='https://picsum.photos/80/80?grayscale&blur=2';">
+                        </li>
+                    `;
+                });
+
+                orderDetailView.innerHTML = `
+                    <h3>訂單 #${order.id} 詳情</h3>
+                    <p>總金額: NT$ ${Math.round(parseFloat(order.total_amount))}</p>
+                    <p>狀態: ${order.status}</p>
+                    <p>訂購日期: ${new Date(order.order_date).toLocaleString()}</p>
+                    <h4>商品列表:</h4>
+                    <ul id="order-items-detail" style="list-style: none; padding: 0;">
+                        ${itemsHtml}
+                    </ul>
+                `;
+            } catch (error) {
+                console.error('獲取訂單詳情失敗:', error);
+                document.getElementById('order-detail-view').innerHTML = '<p class="message error">無法載入訂單詳情。</p>';
+            }
+        }
+    </script>
+</body>
+</html>
