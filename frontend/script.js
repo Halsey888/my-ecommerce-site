@@ -1,6 +1,6 @@
 // script.js
 
-const API_BASE_URL = 'http://localhost:3000'; // 您的後端伺服器位址
+const API_BASE_URL = 'https://my-ecommerce-site-d7ot.onrender.com'; // 您的後端伺服器位址
 
 
 
