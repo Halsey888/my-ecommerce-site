@@ -2,7 +2,8 @@
 require('dotenv').config();
 
 const express = require('express');
-const mysql = require('mysql2/promise');
+// const mysql = require('mysql2/promise'); // 註釋掉或移除 MySQL 驅動
+const { Pool } = require('pg'); // 引入 PostgreSQL 的 Pool
 const bcrypt = require('bcrypt');
 const app = express();
 const cors = require('cors');
@@ -11,7 +12,7 @@ const cors = require('cors');
 app.use(express.json());
 app.use(cors()); // <-- 放在 express.json() 之後
 
-const jwt = require('jsonwebtoken'); // 新增：用於產生和驗證Token (需要 npm install jsonwebtoken)
+const jwt = require('jsonwebtoken'); // 用於產生和驗證Token
 
 // 安全考慮：在實際應用中，JWT_SECRET 應儲存在 .env 檔案中，且為複雜字串
 const JWT_SECRET = process.env.JWT_SECRET || '金色閃光`';
@@ -41,21 +42,30 @@ const authenticateAdmin = (req, res, next) => {
 // -----------------------------------------------------------
 // 資料庫連線設定
 // -----------------------------------------------------------
-const dbConfig = {
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    port: process.env.DB_PORT
-};
-
 let pool; // 定義連線池變數
 
 async function connectToDatabase() {
     try {
-        // 建立資料庫連線池
-        pool = await mysql.createPool(dbConfig);
-        console.log('成功連接到 MySQL 資料庫！');
+        // 從環境變數獲取 DATABASE_URL，這是 Render 提供給 PostgreSQL 的連線字串
+        const databaseUrl = process.env.DATABASE_URL;
+
+        if (!databaseUrl) {
+            console.error('錯誤：DATABASE_URL 環境變數未設定。');
+            process.exit(1);
+        }
+
+        // 建立 PostgreSQL 資料庫連線池
+        pool = new Pool({
+            connectionString: databaseUrl,
+            ssl: {
+                rejectUnauthorized: false // 僅用於開發或測試，生產環境應配置為 true 或根據憑證情況配置
+            }
+        });
+
+        // 測試連線
+        await pool.query('SELECT NOW()');
+        console.log('成功連接到 PostgreSQL 資料庫！');
+
     } catch (error) {
         console.error('連接資料庫失敗:', error.message);
         process.exit(1); // 連接失敗就結束應用程式
@@ -87,14 +97,14 @@ app.get('/products', async (req, res) => {
     const queryParams = [];
 
     if (category && category !== 'all') { // 如果提供了分類，且不是 'all'
-        query += ' WHERE category = ?';
+        query += ' WHERE category = $1'; // 將 ? 替換為 $1
         queryParams.push(category);
     }
     query += ' ORDER BY id ASC'; // 保持排序
 
     try {
-        const [rows] = await pool.query(query, queryParams);
-        res.json(rows);
+        const result = await pool.query(query, queryParams); // 使用 result.rows 獲取結果
+        res.json(result.rows); // 返回 result.rows
     } catch (error) {
         console.error('獲取商品列表失敗:', error.message);
         res.status(500).json({ message: '伺服器內部錯誤' });
@@ -105,7 +115,8 @@ app.get('/products', async (req, res) => {
 app.get('/products/:id', async (req, res) => {
     const { id } = req.params;
     try {
-        const [rows] = await pool.query('SELECT * FROM products WHERE id = ?', [id]);
+        const result = await pool.query('SELECT * FROM products WHERE id = $1', [id]); // 將 ? 替換為 $1
+        const rows = result.rows; // 獲取實際數據行
         if (rows.length === 0) {
             return res.status(404).json({ message: '商品未找到' });
         }
@@ -146,7 +157,8 @@ app.post('/register', async (req, res) => {
 
     try {
         // 檢查用戶名或電子郵件是否已存在
-        const [existingUsers] = await pool.query('SELECT id FROM users WHERE username = ? OR email = ?', [username, email]);
+        const result = await pool.query('SELECT id FROM users WHERE username = $1 OR email = $2', [username, email]); // 將 ? 替換為 $1, $2
+        const existingUsers = result.rows; // 獲取實際數據行
         if (existingUsers.length > 0) {
             return res.status(409).json({ message: '用戶名或電子郵件已存在' });
         }
@@ -155,7 +167,7 @@ app.post('/register', async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, 10); // 10 是鹽值 (salt) 的複雜度
 
         // 插入新用戶
-        await pool.query('INSERT INTO users (username, password, email) VALUES (?, ?, ?)', [username, hashedPassword, email]);
+        await pool.query('INSERT INTO users (username, password, email) VALUES ($1, $2, $3)', [username, hashedPassword, email]); // 將 ? 替換為 $1, $2, $3
         res.status(201).json({ message: '註冊成功！' });
 
     } catch (error) {
@@ -174,7 +186,8 @@ app.post('/login', async (req, res) => {
 
     try {
         // 查找用戶
-        const [users] = await pool.query('SELECT * FROM users WHERE username = ?', [username]);
+        const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]); // 將 ? 替換為 $1
+        const users = result.rows; // 獲取實際數據行
         if (users.length === 0) {
             return res.status(401).json({ message: '用戶名或密碼不正確' });
         }
@@ -211,15 +224,16 @@ app.post('/orders', async (req, res) => {
 
     let connection; // 定義連線變數，以便在 finally 區塊中釋放
     try {
-        connection = await pool.getConnection(); // 從連線池中獲取一個連線
-        await connection.beginTransaction(); // 開始事務
+        connection = await pool.connect(); // 從連線池中獲取一個連線 (pg 庫使用 connect() 而不是 getConnection())
+        await connection.query('BEGIN'); // 開始事務 (PostgreSQL 使用 BEGIN)
 
         let totalAmount = 0;
         const orderItemsToInsert = [];
 
         // 驗證商品庫存並計算總金額
         for (const item of items) {
-            const [products] = await connection.query('SELECT id, price, stock FROM products WHERE id = ?', [item.productId]);
+            const productResult = await connection.query('SELECT id, price, stock, name FROM products WHERE id = $1', [item.productId]); // 將 ? 替換為 $1
+            const products = productResult.rows; // 獲取實際數據行
             if (products.length === 0) {
                 throw new Error(`商品 ID: ${item.productId} 不存在`);
             }
@@ -229,7 +243,7 @@ app.post('/orders', async (req, res) => {
                 throw new Error(`商品 ${product.name} 庫存不足，目前僅剩 ${product.stock} 件`);
             }
 
-            totalAmount += product.price * item.quantity;
+            totalAmount += parseFloat(product.price) * item.quantity; // 確保價格是數字進行計算
             orderItemsToInsert.push({
                 productId: product.id,
                 quantity: item.quantity,
@@ -237,24 +251,25 @@ app.post('/orders', async (req, res) => {
             });
 
             // 更新商品庫存
-            await connection.query('UPDATE products SET stock = stock - ? WHERE id = ?', [item.quantity, product.id]);
+            await connection.query('UPDATE products SET stock = stock - $1 WHERE id = $2', [item.quantity, product.id]); // 將 ? 替換為 $1, $2
         }
 
         // 插入訂單主表
-        const [orderResult] = await connection.query('INSERT INTO orders (user_id, total_amount, status) VALUES (?, ?, ?)', [userId, totalAmount, 'pending']);
-        const orderId = orderResult.insertId;
+        // PostgreSQL 的 INSERT 返回值不同，插入的 ID 通常在 rows[0] 中
+        const orderResult = await connection.query('INSERT INTO orders (user_id, total_amount, status) VALUES ($1, $2, $3) RETURNING id', [userId, totalAmount, 'pending']); // RETURNING id 獲取插入的 ID
+        const orderId = orderResult.rows[0].id; // 獲取插入的 ID
 
         // 插入訂單明細
         for (const item of orderItemsToInsert) {
-            await connection.query('INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)', [orderId, item.productId, item.quantity, item.price]);
+            await connection.query('INSERT INTO order_items (order_id, product_id, quantity, price) VALUES ($1, $2, $3, $4)', [orderId, item.productId, item.quantity, item.price]); // 將 ? 替換為 $1, $2, $3, $4
         }
 
-        await connection.commit(); // 提交事務
+        await connection.query('COMMIT'); // 提交事務 (PostgreSQL 使用 COMMIT)
         res.status(201).json({ message: '訂單建立成功！', orderId: orderId, totalAmount: totalAmount });
 
     } catch (error) {
         if (connection) {
-            await connection.rollback(); // 發生錯誤時回滾事務
+            await connection.query('ROLLBACK'); // 發生錯誤時回滾事務 (PostgreSQL 使用 ROLLBACK)
         }
         console.error('建立訂單失敗:', error.message);
         res.status(500).json({ message: error.message || '伺服器內部錯誤' });
@@ -269,8 +284,8 @@ app.post('/orders', async (req, res) => {
 app.get('/users/:userId/orders', async (req, res) => {
     const { userId } = req.params;
     try {
-        const [orders] = await pool.query('SELECT * FROM orders WHERE user_id = ? ORDER BY order_date DESC', [userId]);
-        res.json(orders);
+        const result = await pool.query('SELECT * FROM orders WHERE user_id = $1 ORDER BY order_date DESC', [userId]); // 將 ? 替換為 $1
+        res.json(result.rows); // 返回 result.rows
     } catch (error) {
         console.error('查詢用戶訂單失敗:', error.message);
         res.status(500).json({ message: '伺服器內部錯誤' });
@@ -281,17 +296,19 @@ app.get('/users/:userId/orders', async (req, res) => {
 app.get('/orders/:orderId', async (req, res) => {
     const { orderId } = req.params;
     try {
-        const [orderRows] = await pool.query('SELECT * FROM orders WHERE id = ?', [orderId]);
+        const orderResult = await pool.query('SELECT * FROM orders WHERE id = $1', [orderId]); // 將 ? 替換為 $1
+        const orderRows = orderResult.rows; // 獲取實際數據行
         if (orderRows.length === 0) {
             return res.status(404).json({ message: '訂單未找到' });
         }
 
-        const [itemRows] = await pool.query(`
+        const itemResult = await pool.query(`
             SELECT oi.*, p.name AS product_name, p.image_url
             FROM order_items oi
             JOIN products p ON oi.product_id = p.id
-            WHERE oi.order_id = ?
-        `, [orderId]);
+            WHERE oi.order_id = $1
+        `, [orderId]); // 將 ? 替換為 $1
+        const itemRows = itemResult.rows; // 獲取實際數據行
 
         const order = {
             ...orderRows[0],
@@ -311,8 +328,8 @@ app.get('/orders/:orderId', async (req, res) => {
 // 獲取所有商品 (用於管理員視圖，可能包含更多細節)
 app.get('/admin/products', authenticateAdmin, async (req, res) => {
     try {
-        const [rows] = await pool.query('SELECT * FROM products ORDER BY id ASC');
-        res.json(rows);
+        const result = await pool.query('SELECT * FROM products ORDER BY id ASC');
+        res.json(result.rows); // 返回 result.rows
     } catch (error) {
         console.error('管理員獲取商品列表失敗:', error.message);
         res.status(500).json({ message: '伺服器內部錯誤' });
@@ -329,8 +346,9 @@ app.put('/admin/products/:id/stock', authenticateAdmin, async (req, res) => {
     }
 
     try {
-        const [result] = await pool.query('UPDATE products SET stock = ? WHERE id = ?', [newStock, id]);
-        if (result.affectedRows === 0) {
+        // PostgreSQL 的 UPDATE 返回值不直接包含 affectedRows
+        const result = await pool.query('UPDATE products SET stock = $1 WHERE id = $2', [newStock, id]); // 將 ? 替換為 $1, $2
+        if (result.rowCount === 0) { // pg 庫使用 rowCount 判斷影響行數
             return res.status(404).json({ message: '商品未找到或庫存未更改' });
         }
         res.json({ message: `商品 ID: ${id} 庫存已更新為 ${newStock}` });
@@ -351,57 +369,54 @@ app.post('/admin/products', authenticateAdmin, async (req, res) => {
     }
 
     try {
-        const [result] = await pool.query(
-            'INSERT INTO products (name, description, price, stock, image_url, category) VALUES (?, ?, ?, ?, ?, ?)',
+        // PostgreSQL 的 INSERT 返回值通常包含插入的行
+        const result = await pool.query(
+            'INSERT INTO products (name, description, price, stock, image_url, category) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id', // 將 ? 替換為 $1-$6，並添加 RETURNING id
             [name, description, price, stock, image_url, category || '其他'] // 如果沒有提供 category，預設為 '其他'
         );
-        res.status(201).json({ message: '商品新增成功！', productId: result.insertId });
+        const productId = result.rows[0].id; // 獲取插入的 ID
+        res.status(201).json({ message: '商品新增成功！', productId: productId });
     } catch (error) {
         console.error('新增商品失敗:', error.message);
         res.status(500).json({ message: '伺服器內部錯誤或商品名稱重複' }); // 可能是名稱重複
     }
 });
 
-// **新增：刪除商品 (管理員操作)**
+// **刪除商品 (管理員操作)**
 app.delete('/admin/products/:id', authenticateAdmin, async (req, res) => {
     const { id } = req.params;
 
     let connection;
     try {
-        connection = await pool.getConnection();
-        await connection.beginTransaction();
+        connection = await pool.connect(); // pg 庫使用 connect() 而不是 getConnection()
+        await connection.query('BEGIN'); // PostgreSQL 使用 BEGIN
 
         // 檢查該商品是否在任何訂單中
-        const [orderItems] = await connection.query('SELECT COUNT(*) AS count FROM order_items WHERE product_id = ?', [id]);
-        if (orderItems[0].count > 0) {
-            // 如果商品存在於訂單中，通常不允許直接刪除，而是標記為「下架」或「隱藏」
-            // 這裡為了演示直接刪除，但在實際應用中應避免
-            // 或者，您可以選擇刪除相關的訂單明細（如果業務邏輯允許），但這可能會破壞訂單歷史
-            // 或者更優雅地更新商品狀態，例如 SET is_active = FALSE
+        const orderItemsResult = await connection.query('SELECT COUNT(*) AS count FROM order_items WHERE product_id = $1', [id]); // 將 ? 替換為 $1
+        if (orderItemsResult.rows[0].count > 0) { // pg 庫使用 result.rows
             console.warn(`商品 ID: ${id} 存在於訂單中，但仍將被刪除。建議在實際環境中避免此操作或更新商品狀態。`);
-            // return res.status(400).json({ message: '無法刪除商品，因為它已存在於歷史訂單中。請考慮將其下架。' });
         }
 
         // 刪除商品
-        const [result] = await connection.query('DELETE FROM products WHERE id = ?', [id]);
+        const result = await connection.query('DELETE FROM products WHERE id = $1', [id]); // 將 ? 替換為 $1
 
-        if (result.affectedRows === 0) {
-            await connection.rollback();
+        if (result.rowCount === 0) { // pg 庫使用 rowCount 判斷影響行數
+            await connection.query('ROLLBACK');
             return res.status(404).json({ message: '商品未找到' });
         }
 
-        await connection.commit();
+        await connection.query('COMMIT'); // PostgreSQL 使用 COMMIT
         res.json({ message: `商品 ID: ${id} 已成功刪除。` });
 
     } catch (error) {
         if (connection) {
-            await connection.rollback();
+            await connection.query('ROLLBACK'); // PostgreSQL 使用 ROLLBACK
         }
         console.error('刪除商品失敗:', error.message);
         res.status(500).json({ message: '伺服器內部錯誤' });
     } finally {
         if (connection) {
-            connection.release();
+            connection.release(); // 釋放連線回連線池
         }
     }
 });
